@@ -9,25 +9,38 @@ import sys
 
 
 def process_frame(im):
-    # convert to grayscale
+    # convert to gray-scale
     gs = cv.cvtColor(im, cv.COLOR_BGR2GRAY)
-    # denoise using gaussian
+    # de-noise using gaussian
     cv.GaussianBlur(gs, (7, 7), 0)
     # run canny filter
     gs = cv.Canny(gs, 50, 150)
     # ROI
     mask = np.zeros_like(gs, dtype=np.uint8)
     sy, sx = mask.shape
-    vertices = np.array([[0, sy - 1], [4 * sx / 10, sy / 2], [6 * sx / 10, sy / 2], [sx - 1, sy - 1]], np.int32)
+    max_line_y = int(sy - 1)
+    min_line_y = int(3 * sy / 5)
+    min_line_x = 0
+    max_line_x = sx - 1
+    vertices = np.array([[min_line_x, max_line_y],
+                         [4 * sx / 10, min_line_y],
+                         [6 * sx / 10, min_line_y],
+                         [max_line_x, max_line_y]], np.int32)
     cv.fillPoly(mask, [vertices], 0xff)
     gs = cv.bitwise_and(gs, mask)
 
-    # hough lines
-    lines = cv.HoughLinesP(gs, 1, np.pi / 180, 80, 10)
-    for x1, y1, x2, y2 in lines[0]:
-        cv.line(im, (x1, y1), (x2, y2), (0, 255, 0), 2)
-    print(lines)
-    return im
+    # Hough lines
+    lines = cv.HoughLinesP(gs, 1, np.pi / 180, 80, 10, 20, 5)
+    for line in lines:
+        # print(line)
+        x1, y1, x2, y2 = line[0]
+        # extend line so it crosses min_line_y, max_line_y
+        if y1 != y2:
+            line_x_0 = int(((x1 - x2) * max_line_y + x2 * y1 - x1 * y2) / (y1 - y2))
+            line_x_1 = int(((x1 - x2) * min_line_y + x2 * y1 - x1 * y2) / (y1 - y2))
+            cv.line(im, (line_x_0, max_line_y), (line_x_1, min_line_y), (0, 255, 0), 2)
+    print(len(lines))
+    return gs
 
 # read test images
 
@@ -60,8 +73,9 @@ im = cv.imread(os.path.join('test_images', image_file), cv.IMREAD_COLOR)
 
 result = process_frame(im)
 cv.imshow('input', im)
+cv.moveWindow('input', 300, 400)
 cv.imshow('result', result)
-
+cv.moveWindow('result', 300, 400)
 cv.waitKey(0)
 cv.destroyAllWindows()
 cv.waitKey(1)
