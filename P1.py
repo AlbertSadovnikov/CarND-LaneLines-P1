@@ -8,11 +8,48 @@ import os
 import sys
 
 
+def draw_lines(img, lines, color=[255, 0, 0], thickness=2):
+    """
+    NOTE: this is the function you might want to use as a starting point once you want to
+    average/extrapolate the line segments you detect to map out the full
+    extent of the lane (going from the result shown in raw-lines-example.mp4
+    to that shown in P1_example.mp4).
+
+    Think about things like separating line segments by their
+    slope ((y2-y1)/(x2-x1)) to decide which segments are part of the left
+    line vs. the right line.  Then, you can average the position of each of
+    the lines and extrapolate to the top and bottom of the lane.
+
+    This function draws `lines` with `color` and `thickness`.
+    Lines are drawn on the image inplace (mutates the image).
+    If you want to make the lines semi-transparent, think about combining
+    this function with the weighted_img() function below
+    """
+    for line in lines:
+        for x1, y1, x2, y2 in line:
+            cv.line(img, (x1, y1), (x2, y2), color, thickness)
+
+
+def filter_lines(lines, y_level_0, y_level_1, x_range_0, x_range_1):
+    filtered_lines = list()
+    for line in lines:
+        x1, y1, x2, y2 = line[0]
+        # find x coordinates, where line crosses y_level_0 and y_level_1
+        if y1 != y2:
+            x_level_0 = int(((x1 - x2) * y_level_0 + x2 * y1 - x1 * y2) / (y1 - y2))
+            x_level_1 = int(((x1 - x2) * y_level_1 + x2 * y1 - x1 * y2) / (y1 - y2))
+            # check if crossings are in range
+            if x_range_0[0] < x_level_0 < x_range_0[1] and x_range_1[0] < x_level_1 < x_range_1[1]:
+                filtered_lines.append([x_level_0, y_level_0, x_level_1, y_level_1])
+    return np.array(filtered_lines)
+
+
 def process_frame(im):
     # convert to gray-scale
     gs = cv.cvtColor(im, cv.COLOR_BGR2GRAY)
-    # de-noise using gaussian
-    cv.GaussianBlur(gs, (7, 7), 0)
+    # de-noise using gaussian smoothing
+    cv.GaussianBlur(gs, (5, 5), 0)
+
     # run canny filter
     gs = cv.Canny(gs, 50, 150)
     # ROI
@@ -29,18 +66,21 @@ def process_frame(im):
     cv.fillPoly(mask, [vertices], 0xff)
     gs = cv.bitwise_and(gs, mask)
 
-    # Hough lines
-    lines = cv.HoughLinesP(gs, 1, np.pi / 180, 80, 10, 20, 5)
-    for line in lines:
-        # print(line)
-        x1, y1, x2, y2 = line[0]
-        # extend line so it crosses min_line_y, max_line_y
-        if y1 != y2:
-            line_x_0 = int(((x1 - x2) * max_line_y + x2 * y1 - x1 * y2) / (y1 - y2))
-            line_x_1 = int(((x1 - x2) * min_line_y + x2 * y1 - x1 * y2) / (y1 - y2))
-            cv.line(im, (line_x_0, max_line_y), (line_x_1, min_line_y), (0, 255, 0), 2)
-    print(len(lines))
-    return gs
+    # hough lines
+    lines = cv.HoughLinesP(gs, 1, np.pi / 180, 40, 10, 10, 5)
+    draw_lines(im, lines)
+    #
+    # left_lines = filter_lines(lines, max_line_y, min_line_y, [min_line_x, sx / 2 - 1], [4 * sx / 10, 6 * sx / 10])
+    # right_lines = filter_lines(lines, max_line_y, min_line_y, [sx / 2 + 1, max_line_x], [4 * sx / 10, 6 * sx / 10])
+    #
+    # left_line = np.mean(left_lines, axis=0)
+    # print('left', left_line)
+    # right_line = np.mean(right_lines, axis=0)
+    # print('right', right_line)
+    # cv.line(im, (left_line[0], left_line[1]), (left_line[2], left_line[3]), (0, 255, 0), 2)
+    # cv.line(im, (right_line[0], right_line[1]), (right_line[2], right_line[3]), (0, 0, 255), 2)
+
+    return im
 
 # read test images
 
@@ -67,13 +107,11 @@ def process_frame(im):
 
 file_list = os.listdir('test_images')
 
-image_file = file_list[0]
+image_file = file_list[1]
 cv.startWindowThread()
 im = cv.imread(os.path.join('test_images', image_file), cv.IMREAD_COLOR)
 
 result = process_frame(im)
-cv.imshow('input', im)
-cv.moveWindow('input', 300, 400)
 cv.imshow('result', result)
 cv.moveWindow('result', 300, 400)
 cv.waitKey(0)
